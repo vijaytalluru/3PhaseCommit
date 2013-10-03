@@ -9,7 +9,8 @@ public class Site {
     private int procNum, numProcs;
     
     public Site (int no, int total) {
-        net = new NetController (new Config (no, total));
+        int SLEEP = (int)((15-1.5*no)*1000);
+        net = new NetController (new Config (no, total), SLEEP);
         procNum = no;
         numProcs = total;
     }

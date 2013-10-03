@@ -31,11 +31,16 @@ public class NetController {
 	private final OutgoingSock[] outSockets;
 	private final ListenServer listener;
 	
-	public NetController(Config config) {
+	public NetController(Config config, int SLEEP) {
 		this.config = config;
 		inSockets = Collections.synchronizedList(new ArrayList<IncomingSock>());
 		listener = new ListenServer(config, inSockets);
 		outSockets = new OutgoingSock[config.numProcesses];
+        try {
+            Thread.sleep(SLEEP);
+        } catch (InterruptedException e) { 
+            System.out.println("Thread sleep error!");
+        }
 		listener.start();
 	}
 	
