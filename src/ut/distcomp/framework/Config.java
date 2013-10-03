@@ -11,7 +11,9 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.Properties;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class Config {
@@ -51,6 +53,24 @@ public class Config {
 	 */
 	public Config() {
 	}
+	
+    public Config(int no, int total) {
+        logger = Logger.getLogger("NetFramework");
+        procNum = no;
+        numProcesses = total;
+        addresses = new InetAddress[numProcesses];
+        ports = new int[numProcesses];
+        try {
+            for (int i=0; i<numProcesses; ++i) {
+                addresses[i] = InetAddress.getByName("localhost");
+                ports[i] = 7330+i;
+            }
+        } catch (UnknownHostException e) {
+            logger.log(Level.SEVERE, "It seems localhost is not a host");
+            System.exit(0);
+        }
+        
+    }
 
 	/**
 	 * Array of addresses of other hosts.  All hosts should have identical info here.
