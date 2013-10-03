@@ -37,6 +37,7 @@ public class NetController {
 		listener = new ListenServer(config, inSockets);
 		outSockets = new OutgoingSock[config.numProcesses];
         try {
+            System.out.println("Sleeping for " + SLEEP + " milliseconds..");
             Thread.sleep(SLEEP);
         } catch (InterruptedException e) { 
             System.out.println("Thread sleep error!");
