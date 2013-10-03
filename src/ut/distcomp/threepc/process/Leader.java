@@ -15,5 +15,11 @@ public class Leader implements Process {
         
         return false;
     }
+    
+    @Override
+    public boolean processInput(String input) {
+        System.out.println("INPUT\t" + input);
+        return false;
+    }
 
 }

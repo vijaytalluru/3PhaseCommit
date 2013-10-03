@@ -7,5 +7,6 @@ public interface Process {
     public static final int COMMITTED = 3;
     
     public boolean processMsg (String msg);
+    public boolean processInput (String input);
 
 }

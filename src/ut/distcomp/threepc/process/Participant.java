@@ -16,5 +16,11 @@ public class Participant implements Process {
         
         return false;
     }
+    
+    @Override
+    public boolean processInput(String input) {
+        
+        return false;
+    }
 
 }

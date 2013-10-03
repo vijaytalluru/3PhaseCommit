@@ -2,7 +2,12 @@ package ut.distcomp.threepc.process;
 
 import ut.distcomp.framework.NetController;
 import ut.distcomp.framework.Config;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.util.List;
+import ut.distcomp.threepc.playlist.Playlist;
 
 public class Site {
     
@@ -10,6 +15,7 @@ public class Site {
     private int procNum, numProcs;
     private boolean[] upList;
     private int leader;
+    private Playlist playlist;
     
     private Process type;
     
@@ -18,9 +24,12 @@ public class Site {
         net = new NetController (new Config (no, total), SLEEP);
         procNum = no;
         numProcs = total;
+        
         upList = new boolean[total];
         leader = 0;
         type = Participant.getParticipant();
+        
+        playlist = new Playlist();
     }
     
     public void initializeMe () {
@@ -33,18 +42,32 @@ public class Site {
     
     public void mainLoop () {
         electLeader();
+        BufferedReader br = new BufferedReader (new InputStreamReader (System.in));
+        
         while (true) {
+            if (leader == procNum) {
+                try {
+                    String input = br.readLine();
+                    if (input != null)
+                        type.processInput (input);
+                } catch (IOException e) {
+                    
+                }
+            }
             List<String> msgs = listen();
             for (String msg : msgs) {
                 System.out.println ("INCOMING:\t" + msg);
                 type.processMsg (msg);
             }
-            sendMsg ((int)(Math.random()*numProcs), "PING\t" + procNum);
-            try {
-                Thread.sleep(1000);
-            } catch (Exception e) {
-                
-            }
+        }
+    }
+    
+    private void pingRandom () {
+        sendMsg ((int)(Math.random()*numProcs), "PING\t" + procNum);
+        try {
+            //Thread.sleep(1000);
+        } catch (Exception e) {
+            
         }
     }
     
@@ -75,7 +98,8 @@ public class Site {
     
     private List<String> listen () {
         List<String> msgs;
-        for (msgs = net.getReceivedMsgs(); msgs == null; msgs = net.getReceivedMsgs());
+        long start = System.currentTimeMillis();
+        for (msgs = net.getReceivedMsgs(); System.currentTimeMillis()-start < 1000 && (msgs == null || msgs.size() == 0); msgs = net.getReceivedMsgs());
         return msgs;
     }
     
