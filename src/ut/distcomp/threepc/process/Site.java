@@ -2,6 +2,7 @@ package ut.distcomp.threepc.process;
 
 import ut.distcomp.framework.NetController;
 import ut.distcomp.framework.Config;
+import java.util.List;
 
 public class Site {
     
@@ -19,9 +20,14 @@ public class Site {
         for (int i=0; i<numProcs; ++i)
             net.sendMsg (i, "Hello " + i + ", I am " + procNum);
         while (true)
-            for (String msg : net.getReceivedMsgs()) {
+            for (String msg : listen())
                 System.out.println (msg);
-            }
+    }
+    
+    private List<String> listen () {
+        List<String> msgs;
+        for (msgs = net.getReceivedMsgs(); msgs == null; msgs = net.getReceivedMsgs());
+        return msgs;
     }
     
     public void finalize () {
