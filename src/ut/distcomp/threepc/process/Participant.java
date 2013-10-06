@@ -4,7 +4,7 @@ import ut.distcomp.threepc.util.Timer;
 
 public class Participant implements Process {
     
-    private static final Participant participant = new Participant();
+    private static Participant participant;
     private static final int TIMEOUT = 2000;
     Site site;
     
@@ -12,6 +12,7 @@ public class Participant implements Process {
     }
     
     public static Participant getParticipant (Site site) {
+        participant = new Participant();
         participant.site = site;
         return participant;
     }
@@ -23,6 +24,8 @@ public class Participant implements Process {
         
         if (parts[0].equals("UPLIST")) {
             String[] hosts = parts[2].split(" ");
+            for (int i=0; i<site.numProcs; ++i)
+                site.upList[i] = false;
             for (String host : hosts)
                 site.upList[Integer.parseInt(host)] = true;
             
@@ -51,6 +54,7 @@ public class Participant implements Process {
             if (Integer.parseInt(parts[1]) == site.leader) {
                 site.playlist = site.tempPlaylist;
                 StateHelper.committed(site);
+                site.participantFields.waitingForCommit = false;
                 System.out.println ("Committed!");
                 site.endTransaction();
             }
@@ -62,9 +66,29 @@ public class Participant implements Process {
                 site.endTransaction();
             }
             
+        } else if (parts[0].equals("LEADER") && !site.leader()) {
+            site.leader = site.procNum;
+            site.iLeader();
+            
+        } else if (parts[0].equals("DEAD") && Integer.parseInt(parts[1]) == site.leader) {
+            handleDeadLeader();
         }
 
         return false;
+    }
+    
+    private void handleDeadLeader () {
+        site.upList[site.leader] = false;
+        site.electLeader();
+    }
+
+    @Override
+    public void checkTimeouts() {
+        if (site.participantFields.waitingForCommit && site.participantFields.commitTimer.timeout()) {
+            handleDeadLeader();
+        } else if (site.participantFields.waitingForPrecommit && site.participantFields.precommitTimer.timeout()) {
+            handleDeadLeader();
+        }
     }
     
     private void sendVoteResp (boolean status) {
@@ -81,7 +105,7 @@ public class Participant implements Process {
             site.participantFields.waitingForPrecommit = true;
             site.participantFields.precommitTimer = new Timer (TIMEOUT);
             System.out.println ("Waiting for precommit..");
-            site.waitForMessages();
+            //site.waitForMessages();
         }
     }
     
@@ -91,12 +115,12 @@ public class Participant implements Process {
         site.participantFields.waitingForCommit = true;
         site.participantFields.commitTimer = new Timer (TIMEOUT);
         System.out.println ("Waiting for commit..");
-        site.waitForMessages();
+        //site.waitForMessages();
     }
     
     @Override
     public boolean processInput(String input) {
-        
+        System.out.println("Participant need no input.");
         return false;
     }
 

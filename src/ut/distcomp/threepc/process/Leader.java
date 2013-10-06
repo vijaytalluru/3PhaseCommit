@@ -4,7 +4,7 @@ import ut.distcomp.threepc.util.Timer;
 
 public class Leader implements Process {
     
-    private static final Leader leader = new Leader();
+    private static Leader leader;
     private static final int TIMEOUT = 2000;
     Site site;
     
@@ -12,6 +12,7 @@ public class Leader implements Process {
     }
     
     public static Leader getLeader (Site site) {
+        leader = new Leader();
         leader.site = site;
         return leader;
     }
@@ -40,11 +41,11 @@ public class Leader implements Process {
             
         } else if (site.leaderFields.waitingForAck && parts[0].equals("ACK")) {
             if (Long.parseLong(parts[2]) == site.currentTransaction) {
-                    site.leaderFields.ackVector[Integer.parseInt(parts[1])] = Process.Ack.ACK;
+                site.leaderFields.ackVector[Integer.parseInt(parts[1])] = Process.Ack.ACK;
                 
             }
             if (site.leaderFields.allAcks()) {
-                    commit();
+                commit();
             } else if (site.leaderFields.ackTimer.timeout()) {
                 commit();
             }
@@ -52,6 +53,21 @@ public class Leader implements Process {
         }
         
         return false;
+    }
+
+    @Override
+    public void checkTimeouts() {
+        if (site.leaderFields.waitingForAck && site.leaderFields.ackTimer.timeout()) {
+            commit();
+        } else if (site.leaderFields.waitingForVotes && site.leaderFields.voteTimer.timeout()) {
+            abort();
+        }
+    }
+    
+    private void die () {
+        for (int i=0; i<site.numProcs; ++i)
+            if (i != site.leader)
+                site.sendMsg (i, "DEAD\t" + site.procNum);
     }
     
     private void commit () {
@@ -65,6 +81,12 @@ public class Leader implements Process {
                 site.sendMsg (i, "COMMIT\t" + site.procNum + "\t" + site.currentTransaction);
             }
         }
+        
+        actualCommit ();
+        
+    }
+    
+    private void actualCommit () {
         site.playlist = site.tempPlaylist;
         StateHelper.committed(site);
         System.out.println ("Commited!");
@@ -105,7 +127,7 @@ public class Leader implements Process {
         site.leaderFields.waitingForAck = true;
         site.leaderFields.ackTimer = new Timer (TIMEOUT);
         System.out.println ("Waiting for acks..");
-        site.waitForMessages();
+        //site.waitForMessages();
     }
     
     private void voteReq (String input) {
@@ -113,7 +135,6 @@ public class Leader implements Process {
         site.startTransaction(transactionID);
         
         String upHosts = site.pingAll();
-        site.leaderFields.voteVector = new int[site.numProcs];
         
         for (int i=0; i<site.numProcs; ++i) {
             if (i != site.leader && site.upList[i]) {
@@ -128,7 +149,14 @@ public class Leader implements Process {
         site.leaderFields.voteTimer = new Timer (TIMEOUT);
         
         System.out.println ("Waiting for votes..");
-        site.waitForMessages();
+        //site.waitForMessages();
+    }
+    
+    private boolean loneWolf () {
+        for (int i=0; i<site.numProcs; ++i)
+            if (site.upList[i] && i != site.procNum)
+                return false;
+        return true;
     }
     
     @Override
@@ -140,20 +168,35 @@ public class Leader implements Process {
         }
         String[] parts = input.trim().split("\t");
         if (parts[0].equals("ADD")) {
-            voteReq(input);
+            site.leaderFields.voteVector = new int[site.numProcs];
             boolean status = PlaylistHelper.addSong(site, parts, 0);
-            site.leaderFields.voteVector[site.procNum] = (status)? Process.Vote.YES : Process.Vote.NO;
-            System.out.println ("Added to self");
+            if (loneWolf())
+                actualCommit();
+            else {
+                site.leaderFields.voteVector[site.procNum] = (status)? Process.Vote.YES : Process.Vote.NO;
+                voteReq(input);
+            }
         } else if (parts[0].equals("REMOVE")) {
-            voteReq(input);
+            site.leaderFields.voteVector = new int[site.numProcs];
             boolean status = PlaylistHelper.removeSong(site, parts, 0);
-            site.leaderFields.voteVector[site.procNum] = (status)? Process.Vote.YES : Process.Vote.NO;
-            System.out.println ("Removed from self");
+            if (loneWolf())
+                actualCommit();
+            else {
+                site.leaderFields.voteVector[site.procNum] = (status)? Process.Vote.YES : Process.Vote.NO;
+                voteReq(input);
+            }
         } else if (parts[0].equals("EDIT")) {
-            voteReq(input);
+            site.leaderFields.voteVector = new int[site.numProcs];
             boolean status = PlaylistHelper.editSong(site, parts, 0);
-            site.leaderFields.voteVector[site.procNum] = (status)? Process.Vote.YES : Process.Vote.NO;
-            System.out.println ("Edited in self");
+            if (loneWolf())
+                actualCommit();
+            else {
+                site.leaderFields.voteVector[site.procNum] = (status)? Process.Vote.YES : Process.Vote.NO;
+                voteReq(input);
+            }
+        } else if (parts[0].equals("DIE")) {
+            die();
+            System.exit (0);
         }
         
         return true;

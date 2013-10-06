@@ -27,7 +27,7 @@ public class Site {
     ParticipantFields participantFields;
     
     public Site (int no, int total) {
-        int SLEEP = (int)((15-1.5*no)*1000);
+        int SLEEP = (int)((1.5*(total-no))*1000);
         net = new NetController (new Config (no, total), SLEEP);
         procNum = no;
         numProcs = total;
@@ -50,7 +50,11 @@ public class Site {
     
     public void mainLoop () {
         StateHelper.virgin(this);
-        electLeader();
+        if (logInTransaction())
+            recover();
+        else
+            electLeader();
+        waitForMessages();
         BufferedReader br = new BufferedReader (new InputStreamReader (System.in));
         
         while (true) {
@@ -58,27 +62,40 @@ public class Site {
                 System.out.println ("Waiting for input..");
                 try {
                     String input = br.readLine();
-                    if (input != null)
+                    if (input != null && !input.equals(""))
                         type.processInput (input);
+                        
                 } catch (IOException e) {
-                    
+                    System.out.println("IOException!");
                 }
             }
             System.out.println ("Done with input!");
-            while (!leader() || inTransaction)
+            while (!leader() || inTransaction) {
                 waitForMessages();
+            }
         }
     }
     
     public void waitForMessages () {
+        System.out.println("Listening..");
         List<String> msgs = listen();
         while ((!leader() || inTransaction) && (msgs == null || msgs.size() == 0)) {
             msgs = listen();
+            if (inTransaction)
+                type.checkTimeouts();
         }
         for (String msg : msgs) {
             System.out.println ("INCOMING:\t" + msg);
             type.processMsg (msg);
         }
+    }
+    
+    public boolean logInTransaction() {
+        return false;
+    }
+    
+    public void recover () {
+        
     }
     
     public boolean leader() {
@@ -88,7 +105,8 @@ public class Site {
     public String pingAll () {
         StringBuffer upHosts = new StringBuffer();
         for (int i=0; i<numProcs; ++i)
-            sendMsg (i, "PING\t" + procNum);
+            if (upList[i])
+                sendMsg (i, "PING\t" + procNum);
         for (int i=0; i<numProcs; ++i)
             if (upList[i])
                 upHosts.append(i + " ");
@@ -142,7 +160,6 @@ public class Site {
     }
     
     public List<String> listen () {
-        System.out.println("Listening..");
         List<String> msgs;
         Timer timer = new Timer(1000);
         for (msgs = net.getReceivedMsgs(); !timer.timeout() && (msgs == null || msgs.size() == 0); msgs = net.getReceivedMsgs());
@@ -155,11 +172,11 @@ public class Site {
             return false;
         boolean success = net.sendMsg (to, msg);
         if (!success) {
+            System.out.println("Send to " + to + " failed!");
             upList[to] = false;
             if (to == leader)
                 electLeader();
         }
-        System.out.println ("Sent to " + to);
         return success;
     }
     

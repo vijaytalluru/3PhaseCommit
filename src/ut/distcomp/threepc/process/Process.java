@@ -24,5 +24,6 @@ public interface Process {
     
     public boolean processMsg (String msg);
     public boolean processInput (String input);
+    public void checkTimeouts ();
 
 }
