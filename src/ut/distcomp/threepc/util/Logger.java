@@ -15,7 +15,12 @@ public class Logger {
     private BufferedReader reader;
     
     public Logger (int procNum, long transactionID) {
-        log = new File (transactionID + "_" + procNum + ".log");
+        String logName;
+        if (transactionID == 0)
+            logName = "TRANSACTIONS";
+        else
+            logName = String.valueOf(transactionID);
+        log = new File (logName + "_" + procNum + ".log");
     }
     
     public void write (String s) {
@@ -37,7 +42,7 @@ public class Logger {
                 lines.add (s);
             reader.close();
         } catch (IOException e) {
-            System.out.println("Can't read from file!");
+            System.out.println("Can't read from log file!");
         }
         return lines;
         

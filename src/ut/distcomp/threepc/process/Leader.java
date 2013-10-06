@@ -5,7 +5,9 @@ import ut.distcomp.threepc.util.Timer;
 public class Leader implements Process {
     
     private static Leader leader;
-    private static final int TIMEOUT = 2000;
+    private static final int BASETIMEOUT = 10000;
+    private static final int TIMEOUT_MULTIPLIER = 5;
+    private static int TIMEOUT;
     Site site;
     
     private Leader () {
@@ -14,6 +16,7 @@ public class Leader implements Process {
     public static Leader getLeader (Site site) {
         leader = new Leader();
         leader.site = site;
+        TIMEOUT = BASETIMEOUT + site.DELAY*TIMEOUT_MULTIPLIER;
         return leader;
     }
 
@@ -27,7 +30,6 @@ public class Leader implements Process {
                     site.leaderFields.voteVector[Integer.parseInt(parts[1])] = Process.Vote.YES;
                 else if (parts[3].equals("NO"))
                     site.leaderFields.voteVector[Integer.parseInt(parts[1])] = Process.Vote.NO;
-                
             }
             if (site.leaderFields.allVotes()) {
                 if (site.leaderFields.anyVoteNo()) {
@@ -38,6 +40,8 @@ public class Leader implements Process {
             } else if (site.leaderFields.voteTimer.timeout()) {
                 abort();
             }
+            site.countMsg (Integer.parseInt(parts[1]));
+            return true;
             
         } else if (site.leaderFields.waitingForAck && parts[0].equals("ACK")) {
             if (Long.parseLong(parts[2]) == site.currentTransaction) {
@@ -49,7 +53,43 @@ public class Leader implements Process {
             } else if (site.leaderFields.ackTimer.timeout()) {
                 commit();
             }
+            site.countMsg (Integer.parseInt(parts[1]));
+            return true;
             
+        } else if (site.leaderFields.waitingForStates && parts[0].equals("STATERESP")) {
+            if (Long.parseLong(parts[2]) == site.currentTransaction) {
+                if (parts[3].equals(Process.State.stateStr.get(Process.State.ABORTED)))
+                    site.leaderFields.stateVector[Integer.parseInt(parts[1])] = Process.State.ABORTED;
+                if (parts[3].equals(Process.State.stateStr.get(Process.State.COMMITTED)))
+                    site.leaderFields.stateVector[Integer.parseInt(parts[1])] = Process.State.COMMITTED;
+                if (parts[3].equals(Process.State.stateStr.get(Process.State.UNCERTAIN)))
+                    site.leaderFields.stateVector[Integer.parseInt(parts[1])] = Process.State.UNCERTAIN;
+                if (parts[3].equals(Process.State.stateStr.get(Process.State.PRECOMMIT)))
+                    site.leaderFields.stateVector[Integer.parseInt(parts[1])] = Process.State.PRECOMMIT;
+                if (parts[3].equals(Process.State.stateStr.get(Process.State.UNKNOWN)))
+                    site.leaderFields.stateVector[Integer.parseInt(parts[1])] = Process.State.UNKNOWN;
+            }
+            if (site.leaderFields.allStates() || site.leaderFields.stateTimer.timeout()) {
+                site.leaderFields.waitingForStates = false;
+                if (site.leaderFields.anyState(Process.State.ABORTED)) {
+                    recoveryAbort();
+                } else if (site.leaderFields.anyState(Process.State.COMMITTED)) {
+                    recoveryCommit();
+                } else if (site.leaderFields.allStatesAre(Process.State.UNCERTAIN)) {
+                    recoveryAbort();
+                } else if (site.leaderFields.anyState(Process.State.PRECOMMIT)) {
+                    recoveryPrecommit();
+                }
+            }
+            site.countMsg (Integer.parseInt(parts[1]));
+            return true;
+            
+        } else if (parts[0].equals("STATEREQ-RECOVERY")) {
+            long transactionID = Long.parseLong(parts[2]);
+            String myState = site.getState (Long.parseLong(parts[2]));
+            site.sendMsg(site.leader, "STATERESP-RECOVERY\t" + site.procNum + "\t" + transactionID + "\t" + myState);
+            site.countMsg (Integer.parseInt(parts[1]));
+            return true;
         }
         
         return false;
@@ -61,29 +101,42 @@ public class Leader implements Process {
             commit();
         } else if (site.leaderFields.waitingForVotes && site.leaderFields.voteTimer.timeout()) {
             abort();
+        } else if (site.leaderFields.waitingForStates && site.leaderFields.stateTimer.timeout()) {
+            // HANDLE RECOVERY STATEREQ TIMEOUT HERE
         }
-    }
-    
-    private void die () {
-        for (int i=0; i<site.numProcs; ++i)
-            if (i != site.leader)
-                site.sendMsg (i, "DEAD\t" + site.procNum);
     }
     
     private void commit () {
         site.leaderFields.waitingForAck = false;
-        
         String upHosts = site.pingAll();
-        
-        for (int i=0; i<site.numProcs; ++i) {
-            if (i != site.leader && site.leaderFields.ackVector[i] == Process.Ack.ACK) {
-                site.sendMsg (i, "UPLIST\t" + site.procNum + "\t" + upHosts);
-                site.sendMsg (i, "COMMIT\t" + site.procNum + "\t" + site.currentTransaction);
-            }
+        if (site.PARTIALCOMMIT != -1) {
+            site.sendMsg (site.PARTIALCOMMIT, "UPLIST\t" + site.procNum + "\t" + upHosts);
+            site.sendMsg (site.PARTIALCOMMIT, "COMMIT\t" + site.procNum + "\t" + site.currentTransaction);
+            site.die();
+        } else {
+            for (int i=0; i<site.numProcs; ++i)
+                if (i != site.leader && site.leaderFields.ackVector[i] == Process.Ack.ACK) {
+                    site.sendMsg (i, "UPLIST\t" + site.procNum + "\t" + upHosts);
+                    site.sendMsg (i, "COMMIT\t" + site.procNum + "\t" + site.currentTransaction);
+                }
         }
-        
         actualCommit ();
-        
+    }
+    
+    private void recoveryCommit () {
+        String upHosts = site.pingAll();
+        if (site.PARTIALCOMMIT != -1) {
+            site.sendMsg (site.PARTIALCOMMIT, "UPLIST\t" + site.procNum + "\t" + upHosts);
+            site.sendMsg (site.PARTIALCOMMIT, "COMMIT\t" + site.procNum + "\t" + site.currentTransaction);
+            site.die();
+        } else {
+            for (int i=0; i<site.numProcs; ++i)
+                if (i != site.leader && site.leaderFields.stateVector[i] != Process.State.COMMITTED && site.leaderFields.stateVector[i] != Process.State.NA) {
+                    site.sendMsg (i, "UPLIST\t" + site.procNum + "\t" + upHosts);
+                    site.sendMsg (i, "COMMIT\t" + site.procNum + "\t" + site.currentTransaction);
+                }
+        }
+        actualCommit ();
     }
     
     private void actualCommit () {
@@ -98,6 +151,7 @@ public class Leader implements Process {
     private void abort () {
         site.logger.write("ABORT");
         site.leaderFields.waitingForVotes = false;
+        site.leaderFields.waitingForAck = false;
         StateHelper.aborted(site);
         String upHosts = site.pingAll();
         for (int i=0; i<site.numProcs; ++i) {
@@ -106,6 +160,29 @@ public class Leader implements Process {
                 site.sendMsg (i, "ABORT\t" + site.procNum + "\t" + site.currentTransaction);
             }
         }
+        System.out.println ("Aborted!");
+        site.endTransaction();
+    }
+
+    private void recoveryAbort () {
+        site.logger.write("ABORT");
+        StateHelper.aborted(site);
+        String upHosts = site.pingAll();
+        for (int i=0; i<site.numProcs; ++i) {
+            if (i != site.leader && site.leaderFields.stateVector[i] != Process.Vote.NA) {
+                site.sendMsg (i, "UPLIST\t" + site.procNum + "\t" + upHosts);
+                site.sendMsg (i, "ABORT\t" + site.procNum + "\t" + site.currentTransaction);
+            }
+        }
+        System.out.println ("Aborted!");
+        site.endTransaction();
+    }
+
+    private void loneAbort () {
+        site.logger.write("ABORT");
+        site.leaderFields.waitingForVotes = false;
+        site.leaderFields.waitingForAck = false;
+        StateHelper.aborted(site);
         System.out.println ("Aborted!");
         site.endTransaction();
     }
@@ -129,7 +206,24 @@ public class Leader implements Process {
         site.leaderFields.waitingForAck = true;
         site.leaderFields.ackTimer = new Timer (TIMEOUT);
         System.out.println ("Waiting for acks..");
-        //site.waitForMessages();
+    }
+    
+    private void recoveryPrecommit () {
+        String upHosts = site.pingAll();
+        site.leaderFields.ackVector = new int[site.numProcs];
+        
+        for (int i=0; i<site.numProcs; ++i) {
+            if (i != site.leader && site.leaderFields.stateVector[i] == Process.State.UNCERTAIN) {
+                site.sendMsg (i, "UPLIST\t" + site.procNum + "\t" + upHosts);
+                site.sendMsg (i, "PRECOMMIT\t" + site.procNum + "\t" + site.currentTransaction);
+                site.leaderFields.ackVector[i] = Process.Ack.PENDING;
+            } else {
+                site.leaderFields.ackVector[i] = Process.Ack.NA;
+            }
+        }
+        site.leaderFields.waitingForAck = true;
+        site.leaderFields.ackTimer = new Timer (TIMEOUT);
+        System.out.println ("Waiting for acks..");
     }
     
     private void voteReq (String input, long transactionID) {
@@ -148,7 +242,32 @@ public class Leader implements Process {
         site.leaderFields.voteTimer = new Timer (TIMEOUT);
         
         System.out.println ("Waiting for votes..");
-        //site.waitForMessages();
+    }
+    
+    @Override
+    public void handleNewLeader() {
+        site.logger.write("START-LEADER");
+        String upHosts = site.pingAll();
+        if (loneWolf()) {
+            site.endTransaction();
+            return;
+        }
+        site.leaderFields.stateVector = new int[site.numProcs];
+        
+        for (int i=0; i<site.numProcs; ++i) {
+            if (i != site.leader && site.upList[i]) {
+                site.sendMsg (i, "STATEREQ\t" + site.procNum + "\t" + site.currentTransaction);
+                site.sendMsg (i, "UPLIST\t" + site.procNum + "\t" + upHosts);
+                site.leaderFields.stateVector[i] = Process.State.UNKNOWN;
+            } else
+                site.leaderFields.stateVector[i] = Process.State.NA;
+        }
+        
+        site.leaderFields.waitingForStates = true;
+        site.leaderFields.stateTimer = new Timer (TIMEOUT);
+        site.leaderFields.stateVector[site.procNum] = (site.state == Process.State.VIRGIN)? site.getStateFromLog (site.currentTransaction) : site.state;
+        
+        System.out.println ("Waiting for states..");
     }
     
     private boolean loneWolf () {
@@ -168,34 +287,45 @@ public class Leader implements Process {
         String[] parts = input.trim().split("\t");
         if (parts[0].equals("ADD")) {
             long tID = initInput();
-            boolean status = PlaylistHelper.addSong(site, parts, 0);
+            boolean status = PlaylistHelper.addSong(site, parts, 0, true);
+            site.logger.write("START-3PC");
             if (loneWolf())
-                actualCommit();
+                if (status)
+                    actualCommit();
+                else
+                    loneAbort();
             else {
                 site.leaderFields.voteVector[site.procNum] = (status)? Process.Vote.YES : Process.Vote.NO;
                 voteReq(input, tID);
             }
         } else if (parts[0].equals("REMOVE")) {
             long tID = initInput();
-            boolean status = PlaylistHelper.removeSong(site, parts, 0);
+            boolean status = PlaylistHelper.removeSong(site, parts, 0, true);
+            site.logger.write("START-3PC");
             if (loneWolf())
-                actualCommit();
+                if (status)
+                    actualCommit();
+                else
+                    loneAbort();
             else {
                 site.leaderFields.voteVector[site.procNum] = (status)? Process.Vote.YES : Process.Vote.NO;
                 voteReq(input, tID);
             }
         } else if (parts[0].equals("EDIT")) {
             long tID = initInput();
-            boolean status = PlaylistHelper.editSong(site, parts, 0);
+            boolean status = PlaylistHelper.editSong(site, parts, 0, true);
+            site.logger.write("START-3PC");
             if (loneWolf())
-                actualCommit();
+                if (status)
+                    actualCommit();
+                else
+                    loneAbort();
             else {
                 site.leaderFields.voteVector[site.procNum] = (status)? Process.Vote.YES : Process.Vote.NO;
                 voteReq(input, tID);
             }
         } else if (parts[0].equals("DIE")) {
-            die();
-            System.exit (0);
+            site.die();
         }
         
         return true;
@@ -203,8 +333,8 @@ public class Leader implements Process {
     
     private long initInput () {
         long transactionID = System.currentTimeMillis();
+        site.transactionLogger.write(String.valueOf(transactionID));
         site.startTransaction(transactionID);
-        site.logger.write("START-3PC");
         site.leaderFields.voteVector = new int[site.numProcs];
         return transactionID;
     }
