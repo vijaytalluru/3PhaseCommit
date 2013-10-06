@@ -28,6 +28,8 @@ public class Participant implements Process {
                 site.upList[i] = false;
             for (String host : hosts)
                 site.upList[Integer.parseInt(host)] = true;
+            if (site.logger != null)
+                site.logger.write(parts[0] + "\t" + parts[2]);
             
         } else if (parts[0].equals("VOTEREQ")) {
             if (Integer.parseInt(parts[1]) == site.leader) {
@@ -53,6 +55,7 @@ public class Participant implements Process {
         } else if (parts[0].equals("COMMIT")) {
             if (Integer.parseInt(parts[1]) == site.leader) {
                 site.playlist = site.tempPlaylist;
+                site.logger.write("COMMIT");
                 StateHelper.committed(site);
                 site.participantFields.waitingForCommit = false;
                 System.out.println ("Committed!");
@@ -61,6 +64,7 @@ public class Participant implements Process {
             
         } else if (parts[0].equals("ABORT")) {
             if (Integer.parseInt(parts[1]) == site.leader) {
+                site.logger.write("ABORT");
                 StateHelper.aborted(site);
                 System.out.println ("Aborted!");
                 site.endTransaction();
@@ -92,15 +96,18 @@ public class Participant implements Process {
     }
     
     private void sendVoteResp (boolean status) {
+        String decision = (status)? "YES" : "NO";
+        site.logger.write(decision);
         if (status)
             StateHelper.uncertain(site);
         else {
+            site.logger.write("ABORT");
             StateHelper.aborted(site);
             System.out.println ("Aborted!");
             site.endTransaction();
         }
         site.sendMsg (site.leader, "VOTERESP\t" + site.procNum + "\t" +
-                        site.currentTransaction + "\t" + ((status)? "YES" : "NO"));
+                        site.currentTransaction + "\t" + (decision));
         if (status) {
             site.participantFields.waitingForPrecommit = true;
             site.participantFields.precommitTimer = new Timer (TIMEOUT);

@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.List;
 import ut.distcomp.threepc.playlist.Playlist;
+import ut.distcomp.threepc.util.Logger;
 import ut.distcomp.threepc.util.Timer;
 
 public class Site {
@@ -20,6 +21,7 @@ public class Site {
     
     Process type;
     int state;
+    Logger logger;
     boolean inTransaction;
     long currentTransaction;
     
@@ -110,17 +112,21 @@ public class Site {
         for (int i=0; i<numProcs; ++i)
             if (upList[i])
                 upHosts.append(i + " ");
-        return new String (upHosts);
+        String up = new String (upHosts);
+        logger.write("UPLIST\t" + up);
+        return up;
     }
     
     public void startTransaction (long transactionID) {
         inTransaction = true;
         currentTransaction = transactionID;
+        logger = new Logger (procNum, transactionID);
     }
     
     public void endTransaction () {
         inTransaction = false;
         StateHelper.virgin(this);
+        logger = null;
     }
     
     public void pingRandom () {
