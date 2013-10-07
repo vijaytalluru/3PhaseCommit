@@ -123,18 +123,19 @@ public class Participant implements Process {
             }
             site.recoveryFields.waitingForStates = false;
             if (site.recoveryFields.anyState(Process.State.ABORTED)) {
+                abort();
                 site.recoveryFields = null;
             } else if (site.recoveryFields.anyState(Process.State.COMMITTED)) {
                 String[] tparts = site.recoveryFields.recoveryTransactionParts;
                 if (tparts[0].equals("ADD")) {
                     PlaylistHelper.addSong(site, tparts, 0, false);
-                    site.playlist = site.tempPlaylist;
+                    commit();
                 } else if (tparts[0].equals("REMOVE")) {
                     PlaylistHelper.removeSong(site, tparts, 0, false);
-                    site.playlist = site.tempPlaylist;
+                    commit();
                 } else if (tparts[0].equals("EDIT")) {
                     PlaylistHelper.editSong(site, tparts, 0, false);
-                    site.playlist = site.tempPlaylist;
+                    commit();
                 }
                 site.recoveryFields = null;
             } else if (site.recoveryFields.allStatesAre(Process.State.UNKNOWN)) {

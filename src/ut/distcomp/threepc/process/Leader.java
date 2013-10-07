@@ -261,10 +261,10 @@ public class Leader implements Process {
     public void handleNewLeader() {
         site.logger.write("START-LEADER");
         String upHosts = site.pingAll();
-        if (loneWolf()) {
-            site.endTransaction();
-            return;
-        }
+//        if (loneWolf()) {
+//            site.endTransaction();
+//            return;
+//        }
         site.leaderFields.stateVector = new int[site.numProcs];
         
         for (int i=0; i<site.numProcs; ++i) {

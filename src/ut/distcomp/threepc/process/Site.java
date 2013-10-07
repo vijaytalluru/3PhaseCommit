@@ -70,11 +70,15 @@ public class Site {
         upList = new boolean[numProcs];
         boolean allAlive = true;
         for (int i=0; i<numProcs; ++i) {
-            boolean success = net.sendMsg (i, "HELLO\t" + procNum);
-            if (success)
+            if (i != procNum) {
+                boolean success = net.sendMsg (i, "HELLO\t" + procNum);
+                if (success)
+                    upList[i] = true;
+                else
+                    allAlive = false;
+            } else {
                 upList[i] = true;
-            else
-                allAlive = false;
+            }
         }
         return allAlive;
     }
@@ -90,18 +94,39 @@ public class Site {
         
         while (true) {
             if (!inTransaction && leader()) {
-                System.out.println ("Waiting for input..");
-                try {
-                    String input = br.readLine();
-                    if (input != null && !input.equals("")) {
-                        buildUplist();
-                        type.processInput (input);
+                Timer sanityTimer = new Timer(TIMEOUT);
+                boolean status;
+                for (status = buildUplist(); !status && !sanityTimer.timeout(); status = buildUplist()) {
+                    try {
+                        Thread.sleep(TIMEOUT/2);
+                    } catch (InterruptedException e) {
+                        System.out.println("InterruptedException!");
                     }
-                        
-                } catch (IOException e) {
-                    System.out.println("IOException!");
                 }
-                System.out.println ("Done with input!");
+                if (status) {
+                    System.out.println ("Waiting for input..");
+                    try {
+                        String input = br.readLine();
+                        if (input != null && !input.equals("")) {
+                            sanityTimer = new Timer(TIMEOUT);
+                            for (status = buildUplist(); !status && !sanityTimer.timeout(); status = buildUplist()) {
+                                try {
+                                    Thread.sleep(TIMEOUT/2);
+                                } catch (InterruptedException e) {
+                                    System.out.println("InterruptedException!");
+                                }
+                            }
+                            if (status)
+                                type.processInput (input);
+                            else
+                                System.out.println("All hosts not up! Rejecting input..");
+                        }
+                        
+                    } catch (IOException e) {
+                        System.out.println("IOException!");
+                    }
+                    System.out.println ("Done with input!");
+                }
             }
             waitForMessages();
         }
@@ -109,7 +134,9 @@ public class Site {
     
     public void waitForMessages () {
         System.out.println("Listening..");
-        while (!leader() || inTransaction) {
+        Timer sanityTimer = new Timer(TIMEOUT);
+        //while (!leader() || inTransaction) {
+        while (!sanityTimer.timeout()) {
             List<String> msgs = listen();
             if (! (msgs == null || msgs.size() == 0)) {
                 for (String msg : msgs) {
@@ -118,7 +145,7 @@ public class Site {
                     try {
                         Thread.sleep(DELAY);
                     } catch (InterruptedException e) {
-                        
+                        System.out.println("InterruptedException!");
                     }
                 }
                 return;
@@ -178,8 +205,10 @@ public class Site {
                 continue;
             } else {
                 System.out.println("Incomplete Transaction: " + transactionID + ". Recovering..");
+                logger = new Logger(procNum, transactionID);
                 recoveryFields = new RecoveryFields();
                 while (recoveryFields != null) {
+                    buildUplist();
                     recoveryFields.recoveryTransaction = transactionID;
                     recoveryFields.recoveryTransactionParts = getTransaction(transactionID);
                     recoveryFields.stateVector = new int [numProcs];
