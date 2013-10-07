@@ -5,8 +5,8 @@ import ut.distcomp.threepc.util.Timer;
 public class Participant implements Process {
     
     private static Participant participant;
-    private static final int BASETIMEOUT = 10000;
-    private static final int TIMEOUT_MULTIPLIER = 5;
+    private static final int BASETIMEOUT = 2000;
+    private static final int TIMEOUT_MULTIPLIER = 10;
     private static int TIMEOUT;
     Site site;
     
@@ -104,7 +104,7 @@ public class Participant implements Process {
         } else if (parts[0].equals("STATEREQ-RECOVERY")) {
             long transactionID = Long.parseLong(parts[2]);
             String myState = site.getState (Long.parseLong(parts[2]));
-            site.sendMsg(site.leader, "STATERESP-RECOVERY\t" + site.procNum + "\t" + transactionID + "\t" + myState);
+            site.sendMsg(Integer.parseInt(parts[1]), "STATERESP-RECOVERY\t" + site.procNum + "\t" + transactionID + "\t" + myState);
             site.countMsg (Integer.parseInt(parts[1]));
             return true;
             
@@ -121,29 +121,25 @@ public class Participant implements Process {
                 if (parts[3].equals(Process.State.stateStr.get(Process.State.UNKNOWN)))
                     site.recoveryFields.stateVector[Integer.parseInt(parts[1])] = Process.State.UNKNOWN;
             }
-            if (site.recoveryFields.allStates() || site.recoveryFields.stateTimer.timeout()) {
-                site.recoveryFields.waitingForStates = false;
-                if (site.recoveryFields.anyState(Process.State.ABORTED)) {
-                    site.recoveryFields = null;
-                } else if (site.recoveryFields.anyState(Process.State.COMMITTED)) {
-                    String[] tparts = site.recoveryFields.recoveryTransactionParts;
-                    if (tparts[0].equals("ADD")) {
-                        site.tempPlaylist = site.playlist.clone();
-                        PlaylistHelper.addSong(site, tparts, 0, false);
-                        site.playlist = site.tempPlaylist;
-                    } else if (tparts[0].equals("REMOVE")) {
-                        site.tempPlaylist = site.playlist.clone();
-                        PlaylistHelper.removeSong(site, tparts, 0, false);
-                        site.playlist = site.tempPlaylist;
-                    } else if (tparts[0].equals("EDIT")) {
-                        site.tempPlaylist = site.playlist.clone();
-                        PlaylistHelper.editSong(site, tparts, 0, false);
-                        site.playlist = site.tempPlaylist;
-                    }
-                    site.recoveryFields = null;
-                } else if (site.recoveryFields.allStatesAre(Process.State.UNKNOWN)) {
-                    // What do we do here? Total failure and everyone has recovered and everyone is in UNKNOWN state
+            site.recoveryFields.waitingForStates = false;
+            if (site.recoveryFields.anyState(Process.State.ABORTED)) {
+                site.recoveryFields = null;
+            } else if (site.recoveryFields.anyState(Process.State.COMMITTED)) {
+                String[] tparts = site.recoveryFields.recoveryTransactionParts;
+                if (tparts[0].equals("ADD")) {
+                    PlaylistHelper.addSong(site, tparts, 0, false);
+                    site.playlist = site.tempPlaylist;
+                } else if (tparts[0].equals("REMOVE")) {
+                    PlaylistHelper.removeSong(site, tparts, 0, false);
+                    site.playlist = site.tempPlaylist;
+                } else if (tparts[0].equals("EDIT")) {
+                    PlaylistHelper.editSong(site, tparts, 0, false);
+                    site.playlist = site.tempPlaylist;
                 }
+                site.recoveryFields = null;
+            } else if (site.recoveryFields.allStatesAre(Process.State.UNKNOWN)) {
+                System.out.println("State Unknown..");
+                // What do we do here? Total failure and everyone has recovered and everyone is in UNKNOWN state
             }
             site.countMsg (Integer.parseInt(parts[1]));
             return true;
@@ -185,8 +181,10 @@ public class Participant implements Process {
     @Override
     public void checkTimeouts() {
         if (site.participantFields.waitingForCommit && site.participantFields.commitTimer.timeout()) {
+            resetTimers();
             handleDeadLeader();
         } else if (site.participantFields.waitingForPrecommit && site.participantFields.precommitTimer.timeout()) {
+            resetTimers();
             handleDeadLeader();
         }
     }

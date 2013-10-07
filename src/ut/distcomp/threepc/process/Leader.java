@@ -5,8 +5,8 @@ import ut.distcomp.threepc.util.Timer;
 public class Leader implements Process {
     
     private static Leader leader;
-    private static final int BASETIMEOUT = 10000;
-    private static final int TIMEOUT_MULTIPLIER = 5;
+    private static final int BASETIMEOUT = 2000;
+    private static final int TIMEOUT_MULTIPLIER = 2;
     private static int TIMEOUT;
     Site site;
     
@@ -70,16 +70,7 @@ public class Leader implements Process {
                     site.leaderFields.stateVector[Integer.parseInt(parts[1])] = Process.State.UNKNOWN;
             }
             if (site.leaderFields.allStates() || site.leaderFields.stateTimer.timeout()) {
-                site.leaderFields.waitingForStates = false;
-                if (site.leaderFields.anyState(Process.State.ABORTED)) {
-                    recoveryAbort();
-                } else if (site.leaderFields.anyState(Process.State.COMMITTED)) {
-                    recoveryCommit();
-                } else if (site.leaderFields.allStatesAre(Process.State.UNCERTAIN)) {
-                    recoveryAbort();
-                } else if (site.leaderFields.anyState(Process.State.PRECOMMIT)) {
-                    recoveryPrecommit();
-                }
+                processRecovery();
             }
             site.countMsg (Integer.parseInt(parts[1]));
             return true;
@@ -87,12 +78,26 @@ public class Leader implements Process {
         } else if (parts[0].equals("STATEREQ-RECOVERY")) {
             long transactionID = Long.parseLong(parts[2]);
             String myState = site.getState (Long.parseLong(parts[2]));
-            site.sendMsg(site.leader, "STATERESP-RECOVERY\t" + site.procNum + "\t" + transactionID + "\t" + myState);
+            site.sendMsg(Integer.parseInt(parts[1]), "STATERESP-RECOVERY\t" + site.procNum + "\t" + transactionID + "\t" + myState);
             site.countMsg (Integer.parseInt(parts[1]));
             return true;
         }
         
         return false;
+    }
+    
+    private void processRecovery () {
+        site.leaderFields.waitingForStates = false;
+        if (site.leaderFields.anyState(Process.State.ABORTED)) {
+            recoveryAbort();
+        } else if (site.leaderFields.anyState(Process.State.COMMITTED)) {
+            recoveryCommit();
+        } else if (site.leaderFields.allStatesAre(Process.State.UNCERTAIN)) {
+            recoveryAbort();
+        } else if (site.leaderFields.anyState(Process.State.PRECOMMIT)) {
+            recoveryPrecommit();
+        }
+        
     }
 
     @Override
@@ -102,7 +107,15 @@ public class Leader implements Process {
         } else if (site.leaderFields.waitingForVotes && site.leaderFields.voteTimer.timeout()) {
             abort();
         } else if (site.leaderFields.waitingForStates && site.leaderFields.stateTimer.timeout()) {
-            // HANDLE RECOVERY STATEREQ TIMEOUT HERE
+            boolean atLeastOneWaiting = false;
+            for (int i=0; i<site.numProcs; ++i) {
+                if (site.leaderFields.stateVector[i] == Process.State.UNKNOWN && site.upList[i]) {
+                    atLeastOneWaiting = true;
+                    break;
+                }
+            }
+            if (!atLeastOneWaiting)
+                processRecovery();
         }
     }
     

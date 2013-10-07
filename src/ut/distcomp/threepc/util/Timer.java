@@ -12,5 +12,9 @@ public class Timer {
     public boolean timeout() {
         return System.currentTimeMillis() - start > limit;
     }
+    
+    public long remaining() {
+        return start + limit - System.currentTimeMillis();
+    }
 
 }

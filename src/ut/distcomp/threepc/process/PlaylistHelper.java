@@ -6,7 +6,7 @@ public class PlaylistHelper {
         System.out.println ("Adding song..");
         site.tempPlaylist = site.playlist.clone();
         if (log)
-            site.logger.write(parts[base+1] + "\t" + parts[base+2]);
+            site.logger.write(parts[base]+ "\t" + parts[base+1] + "\t" + parts[base+2]);
         return site.tempPlaylist.addSong (parts[base+1], parts[base+2]);
     }
 
@@ -14,7 +14,7 @@ public class PlaylistHelper {
         System.out.println ("Removing song..");
         site.tempPlaylist = site.playlist.clone();
         if (log)
-            site.logger.write(parts[base+1]);
+            site.logger.write(parts[base]+ "\t" + parts[base+1]);
         return site.tempPlaylist.removeSong (parts[base+1]);
     }
 
@@ -22,7 +22,7 @@ public class PlaylistHelper {
         System.out.println ("Editing song..");
         site.tempPlaylist = site.playlist.clone();
         if (log)
-            site.logger.write(parts[base+1] + "\t" + parts[base+2] + "\t" + parts[base+3]);
+            site.logger.write(parts[base]+ "\t" + parts[base+1] + "\t" + parts[base+2] + "\t" + parts[base+3]);
         return site.tempPlaylist.editSong (parts[base+1], parts[base+2], parts[base+3]);
     }
 

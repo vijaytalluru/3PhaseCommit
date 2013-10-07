@@ -6,7 +6,7 @@ import ut.distcomp.framework.Config;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,8 +16,8 @@ import ut.distcomp.threepc.util.Logger;
 import ut.distcomp.threepc.util.Timer;
 
 public class Site {
-    private static final int BASETIMEOUT = 10000;
-    private static final int TIMEOUT_MULTIPLIER = 5;
+    private static final int BASETIMEOUT = 2000;
+    private static final int TIMEOUT_MULTIPLIER = 10;
     private static int TIMEOUT;
     
     NetController net;
@@ -42,38 +42,46 @@ public class Site {
     Map<Integer, Integer> messageCount;
     
     public Site (int no, int total, int delay, int partialCommit, Map<Integer, Integer> deathAfter) {
+        DELAY = delay;
+        TIMEOUT = BASETIMEOUT + DELAY*TIMEOUT_MULTIPLIER;
+        PARTIALCOMMIT = partialCommit;
+        DEATHAFTER = deathAfter;
+        messageCount = new HashMap<Integer, Integer>();
+        
         int SLEEP = (int)((1.5*(total-no))*1000);
         net = new NetController (new Config (no, total), SLEEP);
         
         procNum = no;
         numProcs = total;
         
-        upList = new boolean[total];
-        leader = 0;
+        leader = -1;
         type = Participant.getParticipant(this);
         participantFields = new ParticipantFields();
         
         transactionLogger = new Logger(procNum, 0);
         playlist = new Playlist();
-        
-        DELAY = delay;
-        TIMEOUT = BASETIMEOUT + DELAY*TIMEOUT_MULTIPLIER;
-        PARTIALCOMMIT = partialCommit;
-        DEATHAFTER = deathAfter;
-        messageCount = new HashMap<Integer, Integer>();
     }
     
     public void initializeMe () {
+        buildUplist();
+    }
+    
+    public boolean buildUplist () {
+        upList = new boolean[numProcs];
+        boolean allAlive = true;
         for (int i=0; i<numProcs; ++i) {
             boolean success = net.sendMsg (i, "HELLO\t" + procNum);
             if (success)
                 upList[i] = true;
+            else
+                allAlive = false;
         }
+        return allAlive;
     }
     
     public void mainLoop () {
         StateHelper.virgin(this);
-        if (lastLogInTransaction())
+        if (transactionLogs())
             recover();
         else
             electLeader(false);
@@ -85,36 +93,38 @@ public class Site {
                 System.out.println ("Waiting for input..");
                 try {
                     String input = br.readLine();
-                    if (input != null && !input.equals(""))
+                    if (input != null && !input.equals("")) {
+                        buildUplist();
                         type.processInput (input);
+                    }
                         
                 } catch (IOException e) {
                     System.out.println("IOException!");
                 }
                 System.out.println ("Done with input!");
             }
-            while (!leader() || inTransaction) {
-                waitForMessages();
-            }
+            waitForMessages();
         }
     }
     
     public void waitForMessages () {
         System.out.println("Listening..");
-        List<String> msgs = listen();
-        while ((!leader() || inTransaction) && (msgs == null || msgs.size() == 0)) {
-            msgs = listen();
-            if (inTransaction)
-                type.checkTimeouts();
-        }
-        for (String msg : msgs) {
-            System.out.println ("INCOMING:\t" + msg);
-            type.processMsg (msg);
-            try {
-                Thread.sleep(DELAY);
-            } catch (InterruptedException e) {
-                
+        while (!leader() || inTransaction) {
+            List<String> msgs = listen();
+            if (! (msgs == null || msgs.size() == 0)) {
+                for (String msg : msgs) {
+                    System.out.println ("[" + new Date() + "]\tINCOMING:\t" + msg);
+                    type.processMsg (msg);
+                    try {
+                        Thread.sleep(DELAY);
+                    } catch (InterruptedException e) {
+                        
+                    }
+                }
+                return;
             }
+            else if (inTransaction)
+                type.checkTimeouts();
         }
     }
     
@@ -137,17 +147,10 @@ public class Site {
         }
     }
     
-    public boolean lastLogInTransaction() {
+    public boolean transactionLogs() {
         List<String> transactions = transactionLogger.readLines();
-        if (transactions.size() > 1) {
-            long lastTransaction = Long.parseLong(transactions.get(transactions.size()-1));
-            int lastState = getStateFromLog (lastTransaction);
-            if (lastState == Process.State.COMMITTED || lastState == Process.State.ABORTED)
-                return false;
-            else
-                return true;
-        }
-        return false;
+        System.out.println (transactions.size() + " transactions found.");
+        return (transactions.size() > 0)? true : false;
     }
     
     public void recover () {
@@ -158,50 +161,43 @@ public class Site {
             int lastState = getStateFromLog (transactionID);
             if (lastState == Process.State.COMMITTED) {
                 String[] parts = getTransaction(transactionID);
+                printVector (parts);
                 if (parts[0].equals("ADD")) {
-                    tempPlaylist = playlist.clone();
                     PlaylistHelper.addSong(this, parts, 0, false);
                     playlist = tempPlaylist;
                 } else if (parts[0].equals("REMOVE")) {
-                    tempPlaylist = playlist.clone();
                     PlaylistHelper.removeSong(this, parts, 0, false);
                     playlist = tempPlaylist;
                 } else if (parts[0].equals("EDIT")) {
-                    tempPlaylist = playlist.clone();
                     PlaylistHelper.editSong(this, parts, 0, false);
                     playlist = tempPlaylist;
                 }
-            }
-            else if (lastState == Process.State.ABORTED)
+                System.out.println("Transaction added: " + transactionID + "\nUpdated playlist:\n" + playlist);
+            } else if (lastState == Process.State.ABORTED) {
+                System.out.println("Aborted transaction: " + transactionID + ". No update.");
                 continue;
-            else {
+            } else {
+                System.out.println("Incomplete Transaction: " + transactionID + ". Recovering..");
                 recoveryFields = new RecoveryFields();
                 while (recoveryFields != null) {
                     recoveryFields.recoveryTransaction = transactionID;
                     recoveryFields.recoveryTransactionParts = getTransaction(transactionID);
-                    List<Integer> participants = new ArrayList<Integer>();
-                    for (String participant : getUplist (transactionID).trim().split(" "))
-                        participants.add(Integer.parseInt(participant));
                     recoveryFields.stateVector = new int [numProcs];
-                    for (int p : participants)
-                        sendMsg (p, "STATEREQ-RECOVERY\t" + procNum + "\t" + transactionID);
                     for (int i=0; i<numProcs; ++i) {
-                        if (i != procNum && upList[i])
+                        if (i != procNum && upList[i]) {
+                            sendMsg (i, "STATEREQ-RECOVERY\t" + procNum + "\t" + transactionID);
                             recoveryFields.stateVector[i] = Process.State.UNKNOWN;
-                        else
+                        } else
                             recoveryFields.stateVector[i] = Process.State.NA;
                     }
                     recoveryFields.waitingForStates = true;
                     recoveryFields.stateTimer = new Timer(TIMEOUT);
-                    try {
-                        Thread.sleep(TIMEOUT/2);
-                    } catch (InterruptedException e) {
-                        System.out.println("Recovery interrupted!");
-                        System.exit(0);
-                    }
+                    waitForMessages();
                 }
+                System.out.println("Transaction completed: " + transactionID + "\tUpdated playlist:\n" + playlist);
             }
         }
+        System.out.println("Recovery complete!");
     }
     
     public boolean leader() {
@@ -245,7 +241,7 @@ public class Site {
     public int electLeader (boolean newLeader) {
         System.out.println ("Looking for leader..");
         int i;
-        for (i=leader; !upList[i]; i=(i+1)%numProcs);
+        for (i=(leader+1)%numProcs; !upList[i]; i=(i+1)%numProcs);
         leader = i;
         if (newLeader)
             sendMsg (leader, "LEADER_NEW\t" + procNum);
@@ -321,9 +317,9 @@ public class Site {
     }
     
     public boolean sendMsg (int to, String msg) {
-        System.out.println ("SEND:\t" + to + "\t" + msg);
-        if (!upList[to])
-            return false;
+        System.out.println ("[" + new Date() + "]\tSEND:\t" + to + "\t" + msg);
+        //if (!upList[to])
+        //    return false;
         boolean success = net.sendMsg (to, msg);
         if (!success) {
             System.out.println("Send to " + to + " failed!");
@@ -352,6 +348,13 @@ public class Site {
     
     public void printVector (boolean[] vector) {
         for (boolean i : vector) {
+            System.out.print (i + " ");
+        }
+        System.out.println();
+    }
+    
+    public void printVector (String[] vector) {
+        for (String i : vector) {
             System.out.print (i + " ");
         }
         System.out.println();
