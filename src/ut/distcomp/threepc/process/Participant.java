@@ -118,10 +118,9 @@ public class Participant implements Process {
                     site.recoveryFields.stateVector[Integer.parseInt(parts[1])] = Process.State.UNCERTAIN;
                 if (parts[3].equals(Process.State.stateStr.get(Process.State.PRECOMMIT)))
                     site.recoveryFields.stateVector[Integer.parseInt(parts[1])] = Process.State.PRECOMMIT;
-                if (parts[3].equals(Process.State.stateStr.get(Process.State.UNKNOWN)))
-                    site.recoveryFields.stateVector[Integer.parseInt(parts[1])] = Process.State.UNKNOWN;
+                if (parts[3].equals(Process.State.stateStr.get(Process.State.LOST)))
+                    site.recoveryFields.stateVector[Integer.parseInt(parts[1])] = Process.State.LOST;
             }
-            site.recoveryFields.waitingForStates = false;
             if (site.recoveryFields.anyState(Process.State.ABORTED)) {
                 abort();
                 site.recoveryFields = null;
@@ -138,9 +137,10 @@ public class Participant implements Process {
                     commit();
                 }
                 site.recoveryFields = null;
-            } else if (site.recoveryFields.allStatesAre(Process.State.UNKNOWN)) {
-                System.out.println("State Unknown..");
-                // What do we do here? Total failure and everyone has recovered and everyone is in UNKNOWN state
+            } else if (site.recoveryFields.allStatesAre(Process.State.LOST)) {
+                System.out.println("All states lost. Aborting..");
+                abort();
+                site.recoveryFields = null;
             }
             site.countMsg (Integer.parseInt(parts[1]));
             return true;

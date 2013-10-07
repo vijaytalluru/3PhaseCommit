@@ -128,7 +128,7 @@ public class Leader implements Process {
             site.die();
         } else {
             for (int i=0; i<site.numProcs; ++i)
-                if (i != site.leader && site.leaderFields.ackVector[i] == Process.Ack.ACK) {
+                if (i != site.leader) {
                     site.sendMsg (i, "UPLIST\t" + site.procNum + "\t" + upHosts);
                     site.sendMsg (i, "COMMIT\t" + site.procNum + "\t" + site.currentTransaction);
                 }
@@ -144,7 +144,7 @@ public class Leader implements Process {
             site.die();
         } else {
             for (int i=0; i<site.numProcs; ++i)
-                if (i != site.leader && site.leaderFields.stateVector[i] != Process.State.COMMITTED && site.leaderFields.stateVector[i] != Process.State.NA) {
+                if (i != site.leader) {
                     site.sendMsg (i, "UPLIST\t" + site.procNum + "\t" + upHosts);
                     site.sendMsg (i, "COMMIT\t" + site.procNum + "\t" + site.currentTransaction);
                 }
@@ -182,7 +182,7 @@ public class Leader implements Process {
         StateHelper.aborted(site);
         String upHosts = site.pingAll();
         for (int i=0; i<site.numProcs; ++i) {
-            if (i != site.leader && site.leaderFields.stateVector[i] != Process.Vote.NA) {
+            if (i != site.leader) {
                 site.sendMsg (i, "UPLIST\t" + site.procNum + "\t" + upHosts);
                 site.sendMsg (i, "ABORT\t" + site.procNum + "\t" + site.currentTransaction);
             }
@@ -208,7 +208,7 @@ public class Leader implements Process {
         site.leaderFields.ackVector = new int[site.numProcs];
         
         for (int i=0; i<site.numProcs; ++i) {
-            if (i != site.leader && site.leaderFields.voteVector[i] == Process.Vote.YES) {
+            if (i != site.leader) {
                 site.sendMsg (i, "UPLIST\t" + site.procNum + "\t" + upHosts);
                 site.sendMsg (i, "PRECOMMIT\t" + site.procNum + "\t" + site.currentTransaction);
                 site.leaderFields.ackVector[i] = Process.Ack.PENDING;
@@ -226,7 +226,7 @@ public class Leader implements Process {
         site.leaderFields.ackVector = new int[site.numProcs];
         
         for (int i=0; i<site.numProcs; ++i) {
-            if (i != site.leader && site.leaderFields.stateVector[i] == Process.State.UNCERTAIN) {
+            if (i != site.leader) {
                 site.sendMsg (i, "UPLIST\t" + site.procNum + "\t" + upHosts);
                 site.sendMsg (i, "PRECOMMIT\t" + site.procNum + "\t" + site.currentTransaction);
                 site.leaderFields.ackVector[i] = Process.Ack.PENDING;

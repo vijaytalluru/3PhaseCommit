@@ -11,6 +11,7 @@ public interface Process {
         static int VIRGIN = 4;
         static int UNKNOWN = 5;
         static int NA = 6;
+        static int LOST = 7;
         
         static HashMap<Integer, String> stateStr;
         static {
@@ -22,6 +23,7 @@ public interface Process {
             stateStr.put (VIRGIN, "VIRGIN");
             stateStr.put (UNKNOWN, "UNKNOWN");
             stateStr.put (NA, "NA");
+            stateStr.put (LOST, "LOST");
         }
     }
     

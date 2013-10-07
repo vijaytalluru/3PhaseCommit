@@ -172,6 +172,7 @@ public class Site {
             if (DEATHAFTER.containsKey(from) && messageCount.get(from) >= DEATHAFTER.get(from))
                 die();
         }
+        //System.out.println("Message " + messageCount.get(from) + " from " + from);
     }
     
     public boolean transactionLogs() {
@@ -311,7 +312,7 @@ public class Site {
             if (logLine.equals("ABORT"))
                 return Process.State.ABORTED;
         }
-        return Process.State.UNKNOWN;
+        return Process.State.LOST;
     }
     
     public String[] getTransaction (long transactionID) {
