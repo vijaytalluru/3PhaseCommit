@@ -2,12 +2,12 @@
 ============
 Implementation of 3-Phase Commit protocol for a distributed song playlist application
 
-Team members:
-Vijay Talluru   vijayt@cs.utexas.edu     EID: vt4225
-Vineet Keshari  vkeshari@cs.utexas.edu   EID: vk3226
+Team members:  
+Vijay Talluru   vijayt@cs.utexas.edu     EID: vt4225  
+Vineet Keshari  vkeshari@cs.utexas.edu   EID: vk3226  
 
-Slip days used (this project) : 0
-Slip days used (total)        : 0
+Slip days used (this project) : 0  
+Slip days used (total)        : 0  
 
 HOW TO RUN:
 
