@@ -40,13 +40,15 @@ public class Site {
     int PARTIALCOMMIT;
     Map<Integer, Integer> DEATHAFTER;
     Map<Integer, Integer> messageCount;
+    int FAILURE;
     
-    public Site (int no, int total, int delay, int partialCommit, Map<Integer, Integer> deathAfter) {
+    public Site (int no, int total, int delay, int partialCommit, Map<Integer, Integer> deathAfter, int failure) {
         DELAY = delay;
         TIMEOUT = BASETIMEOUT + DELAY*TIMEOUT_MULTIPLIER;
         PARTIALCOMMIT = partialCommit;
         DEATHAFTER = deathAfter;
         messageCount = new HashMap<Integer, Integer>();
+        FAILURE = failure;
         
         int SLEEP = (int)((1.5*(total-no))*1000);
         net = new NetController (new Config (no, total), SLEEP);
@@ -159,6 +161,10 @@ public class Site {
         for (int i=0; i<numProcs; ++i)
             if (i != leader)
                 sendMsg (i, "DEAD\t" + procNum);
+        dirtyDie();
+    }
+
+    public void dirtyDie () {
         System.exit(0);
     }
     
@@ -318,6 +324,8 @@ public class Site {
     public String[] getTransaction (long transactionID) {
         Logger tempLogger = new Logger(procNum, transactionID);
         List<String> logLines = tempLogger.readLines();
+        if (logLines == null || logLines.size() == 0)
+            return new String[]{"NONE"};
         return logLines.get(0).trim().split("\t");
     }
     

@@ -41,6 +41,8 @@ public class Participant implements Process {
             site.leader = Integer.parseInt(parts[1]);
             site.transactionLogger.write(parts[2]);
             site.startTransaction(Long.parseLong(parts[2]));
+            if (site.FAILURE == 2)
+                site.dirtyDie();
             if (parts[3].equals("ADD")) {
                 boolean status = PlaylistHelper.addSong(site, parts, 3, true);
                 sendVoteResp (status);
@@ -57,6 +59,8 @@ public class Participant implements Process {
         } else if (parts[0].equals("PRECOMMIT")) {
             if (Integer.parseInt(parts[1]) == site.leader && Long.parseLong(parts[2]) == site.currentTransaction) {
                 StateHelper.precommit(site);
+                if (site.FAILURE == 3)
+                    site.dirtyDie();
                 sendAck();
             }
             site.countMsg (Integer.parseInt(parts[1]));
@@ -64,6 +68,8 @@ public class Participant implements Process {
             
         } else if (parts[0].equals("COMMIT")) {
             if (Integer.parseInt(parts[1]) == site.leader && Long.parseLong(parts[2]) == site.currentTransaction) {
+                if (site.FAILURE == 10)
+                    site.dirtyDie();
                 commit();
             }
             site.countMsg (Integer.parseInt(parts[1]));
@@ -182,6 +188,8 @@ public class Participant implements Process {
     @Override
     public void checkTimeouts() {
         if (site.participantFields.waitingForCommit && site.participantFields.commitTimer.timeout()) {
+            if (site.FAILURE == 12)
+                site.dirtyDie();
             resetTimers();
             handleDeadLeader();
         } else if (site.participantFields.waitingForPrecommit && site.participantFields.precommitTimer.timeout()) {

@@ -121,6 +121,14 @@ public class Leader implements Process {
     
     private void commit () {
         site.leaderFields.waitingForAck = false;
+
+        if (site.FAILURE == 8)
+            site.dirtyDie();
+        if (site.FAILURE == 11) {
+            actualCommit();
+            site.dirtyDie();
+        }
+
         String upHosts = site.pingAll();
         if (site.PARTIALCOMMIT != -1) {
             site.sendMsg (site.PARTIALCOMMIT, "UPLIST\t" + site.procNum + "\t" + upHosts);
@@ -134,10 +142,18 @@ public class Leader implements Process {
                 }
         }
         actualCommit ();
+        if (site.FAILURE == 10)
+            site.dirtyDie();
     }
     
     private void recoveryCommit () {
         String upHosts = site.pingAll();
+
+        if (site.FAILURE == 11) {
+            actualCommit();
+            site.dirtyDie();
+        }
+
         if (site.PARTIALCOMMIT != -1) {
             site.sendMsg (site.PARTIALCOMMIT, "UPLIST\t" + site.procNum + "\t" + upHosts);
             site.sendMsg (site.PARTIALCOMMIT, "COMMIT\t" + site.procNum + "\t" + site.currentTransaction);
@@ -206,16 +222,25 @@ public class Leader implements Process {
         
         String upHosts = site.pingAll();
         site.leaderFields.ackVector = new int[site.numProcs];
-        
+
+        int dieCounter = 0;
+
         for (int i=0; i<site.numProcs; ++i) {
             if (i != site.leader) {
                 site.sendMsg (i, "UPLIST\t" + site.procNum + "\t" + upHosts);
                 site.sendMsg (i, "PRECOMMIT\t" + site.procNum + "\t" + site.currentTransaction);
+                dieCounter++;
+                if (site.FAILURE == 4 && dieCounter > 0)
+                    site.dirtyDie();
                 site.leaderFields.ackVector[i] = Process.Ack.PENDING;
             } else {
                 site.leaderFields.ackVector[i] = Process.Ack.NA;
             }
         }
+
+        if (site.FAILURE == 9)
+            site.dirtyDie();
+
         site.leaderFields.waitingForAck = true;
         site.leaderFields.ackTimer = new Timer (TIMEOUT);
         System.out.println ("Waiting for acks..");
@@ -225,10 +250,18 @@ public class Leader implements Process {
         String upHosts = site.pingAll();
         site.leaderFields.ackVector = new int[site.numProcs];
         
+        if (site.FAILURE == 6)
+            site.dirtyDie();
+
+        int dieCounter = 0;
+        
         for (int i=0; i<site.numProcs; ++i) {
             if (i != site.leader) {
                 site.sendMsg (i, "UPLIST\t" + site.procNum + "\t" + upHosts);
                 site.sendMsg (i, "PRECOMMIT\t" + site.procNum + "\t" + site.currentTransaction);
+                dieCounter++;
+                if (site.FAILURE == 4 && dieCounter > 1)
+                    site.dirtyDie();
                 site.leaderFields.ackVector[i] = Process.Ack.PENDING;
             } else {
                 site.leaderFields.ackVector[i] = Process.Ack.NA;
