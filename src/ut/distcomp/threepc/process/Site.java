@@ -220,7 +220,7 @@ public class Site {
                     recoveryFields.recoveryTransactionParts = getTransaction(transactionID);
                     recoveryFields.stateVector = new int [numProcs];
                     for (int i=0; i<numProcs; ++i) {
-                        if (i != procNum && upList[i]) {
+                        if (i != procNum) {
                             sendMsg (i, "STATEREQ-RECOVERY\t" + procNum + "\t" + transactionID);
                             recoveryFields.stateVector[i] = Process.State.UNKNOWN;
                         } else
